@@ -52,6 +52,10 @@ export const FLOW_TEMPLATES: FlowTemplates = {
   payment: {
     nodes: [
       { id: "payment-created", label: "Payment created/scheduled", category: "core", columns: ["pending"] },
+      { id: "approvals-pending", label: "Awaiting approval(s)", category: "approvals", columns: ["pending"] },
+      { id: "approved", label: "Approved", category: "approvals", columns: ["pending"] },
+      { id: "awaiting-signatures", label: "Awaiting signatures", category: "signOff", columns: ["pending"] },
+      { id: "payment-signed", label: "Payment signed off", category: "signOff", columns: ["pending"] },
       {
         id: "kyc-pending",
         label: "Pending verification document",
@@ -60,20 +64,16 @@ export const FLOW_TEMPLATES: FlowTemplates = {
         columns: ["pending"],
       },
       { id: "kyc-submitted", label: "Verification document submitted", category: "compliance", columns: ["pending"] },
-      { id: "approvals-pending", label: "Awaiting approval(s)", category: "approvals", columns: ["pending"] },
-      { id: "approved", label: "Approved", category: "approvals", columns: ["pending"] },
-      { id: "awaiting-signatures", label: "Awaiting signatures", category: "signOff", columns: ["pending"] },
-      { id: "payment-signed", label: "Payment signed off", category: "signOff", columns: ["pending"] },
       { id: "workflow-complete", label: "Workflow Complete", category: "complete", columns: ["pending", "executed", "rejected"] },
     ],
     edges: [
-      { source: "payment-created", target: "pre-accounting" },
-      { source: "kyc-pending", target: "kyc-submitted" },
-      { source: "kyc-submitted", target: "approvals-pending" },
+      { source: "payment-created", target: "approvals-pending" },
       { source: "approvals-pending", target: "approved" },
       { source: "approved", target: "awaiting-signatures" },
       { source: "awaiting-signatures", target: "payment-signed" },
-      { source: "payment-signed", target: "workflow-complete" },
+      { source: "payment-signed", target: "kyc-pending" },
+      { source: "kyc-pending", target: "kyc-submitted" },
+      { source: "kyc-submitted", target: "workflow-complete" },
     ],
     parallel: {
       workflows: [

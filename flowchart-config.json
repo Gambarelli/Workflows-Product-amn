@@ -1,0 +1,32 @@
+{
+  "config": {
+    "lifecycle": "transactions",
+    "spacing": {
+      "nodeSpacing": 240
+    },
+    "approvals": {
+      "levels": 2,
+      "skipForWhitelistedVendors": true,
+      "lowAmountThreshold": 500
+    },
+    "payment": {
+      "requireSignOff": true,
+      "multiPayerSign": false
+    },
+    "preAccounting": {
+      "required": true,
+      "aiReceiptScan": true
+    },
+    "compliance": {
+      "holdEnabled": false
+    },
+    "fundsPolicy": "strict",
+    "fxConversion": {
+      "enabled": false
+    },
+    "reconciliation": {
+      "autoReconcile": true
+    }
+  },
+  "timestamp": "2025-08-15T15:33:12.322Z"
+}

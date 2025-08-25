@@ -18,6 +18,9 @@ export type AppConfig = {
   payment: {
     requireSignOff: boolean
     multiPayerSign?: boolean
+    showPeerActions?: boolean
+    hideRegularActions?: boolean
+    counterpartyType?: "BANK" | "PEER"
   }
   preAccounting: {
     required: boolean
@@ -85,6 +88,9 @@ export const defaultConfig: AppConfig = {
   payment: {
     requireSignOff: true,
     multiPayerSign: false,
+    showPeerActions: false,
+    hideRegularActions: false,
+    counterpartyType: "BANK",
   },
   preAccounting: {
     required: true,

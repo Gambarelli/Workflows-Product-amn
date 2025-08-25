@@ -38,6 +38,13 @@ export function FlowchartVisualizer({
     return result
   }, [config])
 
+  // Gating + helpers for PEER pills (top-level in component scope)
+  const peerEligible =
+    config.transactionType === "payment" &&
+    !!config.payment?.showPeerActions &&
+    config.payment?.counterpartyType === "PEER"
+  const hideRegularActions = config.transactionType === "payment" && !!config.payment?.hideRegularActions
+
   const zoom = config.spacing.zoom ?? 1
   const nodeWidth = 180 * zoom
   const labelColumnWidth = 150 * zoom
@@ -187,6 +194,31 @@ export function FlowchartVisualizer({
   // Helpers: compute actions for each user category (restricted per request)
   type ColumnType = "pending" | "executed" | "rejected"
 
+  // Build PEER action labels per spec
+  const peerActionsFor = (column: ColumnType, labelLower: string): string[] => {
+    const out: string[] = []
+    if (!peerEligible) return out
+    if (column === "executed") {
+      out.push("Can Copy", "Can Download PDF")
+      return out
+    }
+    if (column === "pending") {
+      if (
+        labelLower.includes("pending verification document") ||
+        labelLower.includes("workflow complete") ||
+        labelLower.includes("awaiting signatures")
+      ) {
+        out.push("Can Copy")
+      } else if (
+        labelLower.includes("payment created/scheduled") ||
+        labelLower.includes("awaiting approval")
+      ) {
+        out.push("Can Delete", "Can Copy")
+      }
+    }
+    return out
+  }
+
   // Helper to layout pills within a max width (wrap to next line when needed)
   const renderPills = (
     actions: string[],
@@ -225,6 +257,84 @@ export function FlowchartVisualizer({
             fill={style.textFill}
           >
             {a}
+          </text>
+        </g>,
+      )
+      cursorX += pillWidth + gap
+    })
+
+    return elements
+  }
+
+  // Styles and renderer for mixed normal + PEER pills (with badge + tooltip)
+  const PEER_PILL_STYLE = {
+    fill: "#dbeafe", // Peer Blue background
+    stroke: "#60a5fa", // Peer Blue border
+    textFill: "#1d4ed8", // Peer Blue text
+    badgeFill: "#1d4ed8",
+    badgeText: "#ffffff",
+  }
+
+  type PillItem = { label: string; kind?: "normal" | "peer" }
+
+  const renderMixedPills = (
+    items: PillItem[],
+    startX: number,
+    startY: number,
+    maxWidth: number,
+    styles: { normal: { fill: string; stroke: string; textFill: string }; peer: typeof PEER_PILL_STYLE },
+  ) => {
+    const pillHeight = 22
+    const pillPaddingX = 10
+    const gap = 8
+    const badgeRadius = 7
+    const badgeExtra = badgeRadius * 2 + 6 // circle + small spacing
+    let cursorX = startX
+    let cursorY = startY
+    const elements: JSX.Element[] = []
+
+    items.forEach((item, idx) => {
+      const approxTextWidth = Math.max(40, item.label.length * 6)
+      const extra = item.kind === "peer" ? badgeExtra : 0
+      const pillWidth = approxTextWidth + pillPaddingX * 2 + extra
+      if (cursorX + pillWidth > startX + maxWidth) {
+        // Wrap
+        cursorX = startX
+        cursorY += pillHeight + 6
+      }
+      const rectX = cursorX
+      const rectY = cursorY
+      const style = item.kind === "peer" ? styles.peer : styles.normal
+      elements.push(
+        <g key={`mixed-pill-${item.kind ?? "normal"}-${item.label}-${idx}`} className="cursor-default">
+          <rect x={rectX} y={rectY} width={pillWidth} height={pillHeight} rx={11} fill={style.fill} stroke={style.stroke} />
+          {item.kind === "peer" && (
+            <>
+              <circle cx={rectX + 11} cy={rectY + pillHeight / 2} r={badgeRadius} fill={PEER_PILL_STYLE.badgeFill} />
+              <text
+                x={rectX + 11}
+                y={rectY + pillHeight / 2 + 0.5}
+                className="text-[10px] font-bold"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontFamily="system-ui"
+                fill={PEER_PILL_STYLE.badgeText}
+              >
+                P
+              </text>
+              <title>PEER contact action</title>
+            </>
+          )}
+          <text
+            x={rectX + pillWidth / 2}
+            y={rectY + pillHeight / 2 + 1}
+            className="text-xs font-medium"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontFamily="system-ui"
+            fill={style.textFill}
+          >
+            {item.label}
           </text>
         </g>,
       )
@@ -421,7 +531,8 @@ export function FlowchartVisualizer({
                   const l = node.label.toLowerCase()
                   let actions: string[] = []
                   if (l.includes("awaiting signatures")) actions = ["Can sign payment"]
-                  else if (l.includes("awaiting approval")) actions = ["Can Approve", "Can reject"]
+                  else if (l.includes("awaiting approval"))
+                    actions = config.transactionType === "card" ? ["Can Approve"] : ["Can Approve", "Can reject"]
                   // Card-specific actions for special rights
                   if (config.transactionType === "card") {
                     if (l.includes("expense incomplete")) {
@@ -434,17 +545,42 @@ export function FlowchartVisualizer({
                       actions.push("Mark as incomplete")
                     }
                   }
+                  // Special rights row (payment): remove Copy/Share and Download PDF normal actions entirely
+                  const normalAdds: string[] = []
+                  if (config.transactionType === "payment") {
+                    // no-op: do not add any normal actions for payment special-rights row
+                  }
+                  const uniqueActions = Array.from(new Set([...actions, ...normalAdds]))
+                  const items: PillItem[] = uniqueActions.map((a) => ({ label: a, kind: "normal" }))
                   return (
                     <g key={`special-actions-${columnType}-${node.id}`}>
-                      {renderPills(actions, x, baseY, cellMaxWidth, {
-                        fill: "#ecfeff",
-                        stroke: "#67e8f9",
-                        textFill: "#0e7490",
+                      {renderMixedPills(items, x, baseY, cellMaxWidth, {
+                        normal: { fill: "#ecfeff", stroke: "#67e8f9", textFill: "#0e7490" },
+                        peer: PEER_PILL_STYLE,
                       })}
                     </g>
                   )
                 })
               })
+            })()}
+
+            {/* Currency: extra note directly under the no-special-rights label */}
+            {config.transactionType === "currency" && (() => {
+              const basicRowTop = rowHeight * (3.5 + parallelRowsCount)
+              const labelY = basicRowTop + 40 // baseline of label text
+              const x = 10 // align with the label text inside the label cell
+              // place directly below the label text inside the label cell
+              const y = labelY + 12
+              const maxWidth = Math.max(160, labelColumnWidth - 20)
+              const items: PillItem[] = [{ label: "Pending discussion about actions", kind: "normal" }]
+              return (
+                <g key="currency-pending-discussions">
+                  {renderMixedPills(items, x, y, maxWidth, {
+                    normal: { fill: "#fef9c3", stroke: "#fde047", textFill: "#854d0e" }, // yellow pill
+                    peer: PEER_PILL_STYLE,
+                  })}
+                </g>
+              )
             })()}
 
             {/* Actions row: User with no special rights */}
@@ -472,6 +608,29 @@ export function FlowchartVisualizer({
                     }
                   } else if (currentLineWidth + horizontalGap + pillWidth > maxWidth) {
                     // wrap to next line
+                    lines += 1
+                    currentLineWidth = pillWidth
+                  } else {
+                    currentLineWidth += horizontalGap + pillWidth
+                  }
+                }
+                return lines
+              }
+              const measureMixedPillLines = (items: PillItem[], maxWidth: number) => {
+                if (items.length === 0) return 0
+                let lines = 1
+                let currentLineWidth = 0
+                const badgeExtra = 14 + 6 // diameter ~14 + spacing
+                for (const it of items) {
+                  const approxTextWidth = Math.max(40, it.label.length * 6)
+                  const pillWidth = approxTextWidth + pillPaddingX * 2 + (it.kind === "peer" ? badgeExtra : 0)
+                  if (currentLineWidth === 0) {
+                    if (pillWidth > maxWidth) {
+                      currentLineWidth = pillWidth
+                    } else {
+                      currentLineWidth = pillWidth
+                    }
+                  } else if (currentLineWidth + horizontalGap + pillWidth > maxWidth) {
                     lines += 1
                     currentLineWidth = pillWidth
                   } else {
@@ -532,6 +691,9 @@ export function FlowchartVisualizer({
                   const x = columnStartX + index * nodeSpacing
                   const cellMaxWidth = nodeSpacing - 20
                   const l = node.label.toLowerCase()
+                  const awaiting = l.includes("awaiting approval")
+                  const currencyAwaiting = awaiting && config.transactionType === "currency"
+                  const suppressAllForAwaiting = false
                   const actions: string[] = []
                   if (l.includes("pending verification document")) actions.push("Can upload document")
                   if ((columnType as ColumnType) === "pending" && pendingVerificationParallelIndices.has(index)) {
@@ -564,17 +726,48 @@ export function FlowchartVisualizer({
                   if ((columnType as ColumnType) === "pending" && pendingAccountingParallelIndices.has(index)) {
                     actions.push("Can add missing accounting field details")
                   }
-                  const uniqueActions = Array.from(new Set(actions))
+                  // Add normal action pills per spec (payment)
+                  const normalAdds: string[] = []
+                  if (config.transactionType === "payment") {
+                    if ((columnType as ColumnType) === "executed") {
+                      normalAdds.push("Copy", "share", "Download PDF")
+                    } else if ((columnType as ColumnType) === "pending") {
+                      if (
+                        l.includes("awaiting signatures") ||
+                        l.includes("pending verification document") ||
+                        l.includes("workflow complete")
+                      ) {
+                        normalAdds.push("Copy", "share")
+                      }
+                    }
+                  }
+                  let uniqueActions: string[] = []
+                  if (suppressAllForAwaiting) {
+                    uniqueActions = []
+                  } else if (currencyAwaiting) {
+                    // Only keep reminder for currency awaiting approval
+                    uniqueActions = ["Can Send approval reminders"]
+                  } else {
+                    uniqueActions = Array.from(new Set([...actions, ...normalAdds]))
+                  }
+                  let items: PillItem[] = hideRegularActions
+                    ? []
+                    : uniqueActions.map((a) => ({ label: a, kind: "normal" }))
+                  // Add PEER action pills per spec (skip entirely if suppressing)
+                  if (!suppressAllForAwaiting && !currencyAwaiting) {
+                    peerActionsFor(columnType as ColumnType, l).forEach((pa) =>
+                      items.push({ label: pa, kind: "peer" }),
+                    )
+                  }
                   // Compute vertical centering for this cell based on number of pill lines
-                  const lines = measurePillLines(uniqueActions, cellMaxWidth)
+                  const lines = measureMixedPillLines(items, cellMaxWidth)
                   const totalHeight = lines > 0 ? lines * pillHeight + (lines - 1) * verticalGap : 0
                   const startY = lines > 0 ? basicRowTop + (rowHeight - totalHeight) / 2 : basicRowTop + rowHeight / 2 - pillHeight / 2
                   return (
                     <g key={`basic-actions-${columnType}-${node.id}`}>
-                      {renderPills(uniqueActions, x, startY, cellMaxWidth, {
-                        fill: "#f3f4f6",
-                        stroke: "#e5e7eb",
-                        textFill: "#374151",
+                      {renderMixedPills(items, x, startY, cellMaxWidth, {
+                        normal: { fill: "#f3f4f6", stroke: "#e5e7eb", textFill: "#374151" },
+                        peer: PEER_PILL_STYLE,
                       })}
                     </g>
                   )

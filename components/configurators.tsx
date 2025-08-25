@@ -159,6 +159,39 @@ export function ConfigPanel({ config, onConfigChange, onClose }: ConfigPanelProp
                 </Card>
               )}
 
+              {config.transactionType === "payment" && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Show PEER actions</CardTitle>
+                      <Switch
+                        checked={!!config.payment.showPeerActions}
+                        onCheckedChange={(checked) =>
+                          updateNestedConfig("payment", {
+                            showPeerActions: checked,
+                            // Also set a simple counterparty flag so gating can work without extra UI
+                            counterpartyType: checked ? "PEER" : "BANK",
+                          })
+                        }
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Hide regular actions</CardTitle>
+                      <Switch
+                        checked={!!config.payment.hideRegularActions}
+                        onCheckedChange={(checked) =>
+                          updateNestedConfig("payment", {
+                            hideRegularActions: checked,
+                          })
+                        }
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {(config.transactionType === "payment" || config.transactionType === "currency") && (
                 <Card>
                   <CardHeader className="pb-2">
